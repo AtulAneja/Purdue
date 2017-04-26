@@ -1,3 +1,4 @@
+
 /*
  * CS252: Shell project
  *
@@ -15,22 +16,122 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <fcntl.h>
-
+#include <regex.h>
+#include <pwd.h>
 #include "command.h"
 
-extern char **environ;
-
-int * backgroundPIDs;
-
-SimpleCommand::SimpleCommand() {
+SimpleCommand::SimpleCommand()
+{
 	// Create available space for 5 arguments
 	_numOfAvailableArguments = 5;
 	_numOfArguments = 0;
 	_arguments = (char **) malloc( _numOfAvailableArguments * sizeof( char * ) );
 }
 
-void SimpleCommand::insertArgument( char * argument ) {
+char * SimpleCommand::checkExpansion(char * argument) {
+	char * arg = strdup(argument);
+	char * checkDollar = strchr(arg, '$');
+	char * checkBraces = strchr(arg, '{');
+
+	char * replace = (char *) malloc (sizeof(argument) + 50);
+	char * temp = replace;
+
+	if (checkDollar && checkBraces) {
+		while (*arg != '$') {
+			*temp = *arg;
+			temp++; arg++;
+		}
+		*temp = '\0';
+
+		while (checkDollar) {
+			if (checkDollar[1] == '{' && checkDollar[2] != '}') {
+				char * temporary = checkDollar + 2;
+				char * env = (char *) malloc (20);
+				char * envtemp = env;
+
+				while (*temporary != '}') {
+					*envtemp = *temporary;
+					envtemp++; temporary++;
+				}
+				*envtemp = '\0';
+
+				char * get = getenv(env);
+
+				strcat(replace, get);
+
+				while (*(arg-1) != '}') arg++;
+
+				char * buf = (char *) malloc (20);
+				char * tbuf = buf;
+
+				while (*arg != '$' && *arg) {
+					*tbuf = *arg;
+					tbuf++; arg++;
+				}
+				*tbuf = '\0';
+				strcat(replace, buf);
+			}
+			checkDollar++;
+			checkDollar = strchr(checkDollar, '$');
+		}
+		argument = strdup(replace);
+		return argument;
+	}
+	return NULL;
+}
+
+char * SimpleCommand::tilde(char * argument) {
+	if (argument[0] == '~') {
+		
+		if (strlen(argument) == 1) {
+		
+			argument = strdup(getenv("HOME"));
+			return argument;
+		
+		} else {
+
+			if (argument[1] == '/') {
+				char * dir = strdup(getenv("HOME"));
+				argument++;
+				argument = strcat(dir, argument);
+				return argument;
+			}
+
+			char * nArgument = (char *) malloc (strlen(argument) + 20);
+			char * uName = (char *) malloc (50);
+			char * user = uName;
+			char * temp = argument;
+
+			temp++;
+
+			while (*temp != '/' && *temp) *(uName++) = *(temp++);
+			*uName = '\0';
+
+
+			if (*temp) {
+
+				nArgument = strcat(getpwnam(user)->pw_dir, temp);
+				argument = strdup(nArgument);
+				return argument;
+
+			} else {
+				
+				argument = strdup(getpwnam(user)->pw_dir);
+				return argument;
+
+			}
+		}
+
+	}
+
+	return NULL;
+}
+
+void
+SimpleCommand::insertArgument( char * argument )
+{
 	if ( _numOfAvailableArguments == _numOfArguments  + 1 ) {
 		// Double the available space
 		_numOfAvailableArguments *= 2;
@@ -38,93 +139,14 @@ void SimpleCommand::insertArgument( char * argument ) {
 				  _numOfAvailableArguments * sizeof( char * ) );
 	}
 
-	/*char * regularExp = "^.*${[^}][^}]*}.*$";
-	regex_t re;
-	regmatch_t match;
-	int result = regcomp(&re, buffer, 0);
+	// Variable expansion implementation
+	char * exp = checkExpansion(argument);
 
-	if (result != 0) {
-		perror("regcomp");
-		return;
-	}*/
+	if (exp) argument = strdup(exp);
+	
+	exp = tilde(argument);
 
-	//Try to do the C way
-	char * arg = strdup(argument);
-	//printf("Argument: %s\n", arg);
-	char * checkDollar = strchr(arg, '$');
-	char * temp = arg;
-
-	char * concatenation = (char *) malloc (strlen(argument) + 100);
-	char * concat = concatenation;
-
-	if (checkDollar != NULL) {
-		while (*arg != '$') {
-			*concat = *arg;
-			concat++;
-			arg++;
-		}
-		*concat = '\0';
-		//printf("Concat: %s\n", concatenation);
-	}
-
-	while (checkDollar != NULL) {
-		//printf("Found Dollar!\n");
-		//printf("CheckDollar: %s\n", checkDollar);
-		if (checkDollar[1] == '{' && checkDollar[2] != '}') {
-			char * temp = checkDollar;
-			temp += 2;
-			char * environment = (char *) malloc (20 * sizeof(char));
-			char * envtemp = environment;
-			//printf("It checks out!\n");
-			while (*temp != '}') {
-				*envtemp = *temp;
-				envtemp++;
-				//printf("%c", *temp);
-				temp++;
-			}
-			*envtemp = '\0';
-			//printf("\nEnvironment: %s\n", environment);
-			char * get = getenv(environment);
-			strcat(concatenation, get);
-			//printf("\nconcatenation now: %s", concatenation);
-			//printf("\nGet: %s", get);
-			//printf("\n");
-
-			//printf("arg now1: %s\n", arg);
-
-			//arg++;
-			while (*arg != '}') {
-				arg++;
-			}
-			arg++;
-
-			//printf("arg now2: %s\n", arg);
-
-			char * newArgument = (char *) malloc (100);
-			char * yolo = newArgument;
-			//printf("It comes here!\n");
-
-			while (*arg != '$' && *arg != '\0') {
-				*newArgument = *arg;
-				newArgument++; arg++;
-			}
-			*newArgument = '\0';
-			//printf("newArgument: %s\n", yolo);
-			strcat(concatenation, yolo);
-			argument = strdup(concatenation);
-		} else {
-			//printf("It doesn't check out!\n");
-		}
-		//printf("Before\n");
-		//while (*arg != '$' || *arg != '\0') {
-		//	arg++;
-		//}
-		//printf("After\n");
-		checkDollar++;
-		checkDollar = strchr(checkDollar, '$');
-	}
-
-	//printf("Final Concatenation: %s\n", argument);
+	if (exp) argument = strdup(exp);
 
 	_arguments[ _numOfArguments ] = argument;
 
@@ -165,7 +187,7 @@ Command::insertSimpleCommand( SimpleCommand * simpleCommand )
 }
 
 void
-Command::clear()
+Command:: clear()
 {
 	for ( int i = 0; i < _numOfSimpleCommands; i++ ) {
 		for ( int j = 0; j < _simpleCommands[ i ]->_numOfArguments; j ++ ) {
@@ -212,36 +234,78 @@ Command::print()
 		for ( int j = 0; j < _simpleCommands[i]->_numOfArguments; j++ ) {
 			printf("\"%s\" \t", _simpleCommands[i]->_arguments[ j ] );
 		}
-		printf("\n");
 	}
 
 	printf( "\n\n" );
-	printf( "  Output       Input        Error        Background        Append\n" );
-	printf( "  ------------ ------------ ------------ ------------ ------------\n" );
-	printf( "  %-12s %-12s %-12s %-12s %-12s\n", _outFile?_outFile:"default",
+	printf( "  Output       Input        Error        Background\n" );
+	printf( "  ------------ ------------ ------------ ------------\n" );
+	printf( "  %-12s %-12s %-12s %-12s\n", _outFile?_outFile:"default",
 		_inFile?_inFile:"default", _errFile?_errFile:"default",
-		_background?"YES":"NO", _append?"YES":"NO");
+		_background?"YES":"NO");
 	printf( "\n\n" );
 
+}
+
+int Command::builtInCheck(int i) {
+
+	// Check if a builtin command is called in the shell
+
+	if (!strcmp(_simpleCommands[i]->_arguments[0], "setenv")) {
+		int error = setenv(_simpleCommands[i]->_arguments[1], _simpleCommands[i]->_arguments[2], 1);
+		if (error)
+			perror("setenv");
+
+		clear();
+		prompt();
+		return 1;
+	}
+
+	if (!strcmp(_simpleCommands[i]->_arguments[0], "unsetenv")) {
+		int error = unsetenv(_simpleCommands[i]->_arguments[1]);
+		if (error)
+			perror("unsetenv");
+
+		clear();
+		prompt();
+		return 1;
+	}
+
+	if (!strcmp(_simpleCommands[i]->_arguments[0], "cd")) {
+		int error;
+		if (_simpleCommands[i]->_numOfArguments == 1) {
+			error = chdir(getenv("HOME"));
+		} else {
+			error = chdir(_simpleCommands[i]->_arguments[1]);
+		}
+
+		if (error < 0) {
+			perror("chdir");
+		}
+
+		clear();
+		prompt();
+		return 1;
+	}
+
+	return 0;
 }
 
 void
 Command::execute()
 {
-
-	int i = 0;
-
 	// Don't do anything if there are no simple commands
 	if ( _numOfSimpleCommands == 0 ) {
 		prompt();
 		return;
 	}
 
-	if (!strcmp(_simpleCommands[0]->_arguments[0], "exit")) {
-		printf("Good Bye!\n");
+	// Check if there is the exit command is called
+	if (!strcmp(_simpleCommands[0]->_arguments[0], "exit") || !strcmp(_simpleCommands[0]->_arguments[0], "bye")) {
+		//printf("Bye Bye!\n");
 		exit(1);
 	}
 
+	// Check for ambiguous output redirect
 	if (_inCounter > 1 || _outCounter > 1) {
 		printf("Ambiguous output redirect.\n");
 		clear();
@@ -262,97 +326,83 @@ Command::execute()
 	int tmperr = dup(2);
 
 	int fdin;
-	int fout;
-	int ferr;
+	int fdout;
+	int fderr;
+	int ret;
 
 	if (_inFile) {
-		fdin = open(_inFile, O_RDONLY,0600);
+		fdin = open(_inFile, O_RDONLY);
 	} else {
 		fdin = dup(tmpin);
 	}
 
 	if (_errFile) {
 		if (_append) {
-			ferr = open(_errFile, O_WRONLY | O_APPEND, 0600);
+			fderr = open(_errFile, O_WRONLY | O_CREAT | O_APPEND, 0600);
 		} else {
-			ferr = open(_errFile, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+			fderr = open(_errFile, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 		}
 	} else {
-		ferr = dup(tmperr);
+		fderr = dup(tmperr);
 	}
-	dup2(ferr, 2);
-	close(ferr);
+	dup2(fderr, 2);
+	close(fderr);
 
-	int ret;
+	for (int i = 0; i < _numOfSimpleCommands; i++) {
 
-	for (i = 0; i < _numOfSimpleCommands; i++) {
+		// Change the file descriptor for the input and then close the file descriptor
 		dup2(fdin, 0);
 		close(fdin);
 
+		// Check for builtins
+		if (builtInCheck(i)) return;
+
+		// Check if the command is the last command
+		// If it is then redirect output to file or stdout instead of a pipe
 		if (i == _numOfSimpleCommands - 1) {
+
 			if (_outFile) {
 				if (_append) {
-					fout = open(_outFile, O_WRONLY | O_APPEND, 0600);
+					fdout = open(_outFile, O_WRONLY | O_CREAT | O_APPEND, 0600);
 				} else {
-					fout = open(_outFile, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+					fdout = open(_outFile, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 				}
 			} else {
-				fout = dup(tmpout);
+				fdout = dup(tmpout);
 			}
+
 		} else {
+
+			//If the command isn't the last command, then make a pipe
 			int fdpipe[2];
 			pipe(fdpipe);
-			fout = fdpipe[1];
+
+			//Make the fdin and fdout variables to point to the sides of the pipe
+			fdout = fdpipe[1];
 			fdin = fdpipe[0];
+
 		}
 
-		dup2(fout, 1);
-		close(fout);
+		//Redirect the output
+		dup2(fdout, 1);
+		close(fdout);
 
-		if (!strcmp(_simpleCommands[i]->_arguments[0], "setenv")) {
-			int errorCheck = setenv(_simpleCommands[i]->_arguments[1], _simpleCommands[i]->_arguments[2], 1);
-			if (errorCheck) {
-				perror("setenv");
-			}
-
-			clear();
-			prompt();
-			return;
-		}
-
-		if (!strcmp(_simpleCommands[i]->_arguments[0], "unsetenv")) {
-			int errorCheck = unsetenv(_simpleCommands[i]->_arguments[1]);
-			if (errorCheck) {
-				perror("unsetenv");
-			}
-		}
-
-		if (!strcmp(_simpleCommands[i]->_arguments[0], "cd")) {
-			int error;
-			if (_simpleCommands[i]->_numOfArguments == 1) {
-				error = chdir(getenv("HOME"));
-			} else {
-				error = chdir(_simpleCommands[i]->_arguments[1]);
-			}
-
-			if (error < 0) {
-				perror("chdir");
-			}
-			clear();
-			prompt();
-			return;
-		}
-
-		int ret;
+		//Execute the command
 		ret = fork();
+
 		if (ret == 0) {
+
+			// Child Process
+
+			// Check if the printenv function is called
 			if (!strcmp(_simpleCommands[i]->_arguments[0], "printenv")) {
-				char **env = environ;
-				while (*env != NULL) {
+				char ** env = environ;
+				while (*env) {
 					printf("%s\n", *env);
 					env++;
 				}
 			}
+
 			execvp(_simpleCommands[i]->_arguments[0], _simpleCommands[i]->_arguments);
 			perror("execvp");
 			_exit(1);
@@ -365,15 +415,13 @@ Command::execute()
 	dup2(tmpin, 0);
 	dup2(tmpout, 1);
 	dup2(tmperr, 2);
-
 	close(tmpin);
 	close(tmpout);
 	close(tmperr);
 
-	if (!_background) {
+	if(!_background) {
 		waitpid(ret, NULL, 0);
 	}
-
 
 	// Clear to prepare for next command
 	clear();
@@ -387,20 +435,10 @@ Command::execute()
 void
 Command::prompt()
 {
-	if ( isatty(0) ) {
-		printf("Sh-ell>");
+	if (isatty(0)) {
+		printf(" > ");
 		fflush(stdout);
 	}
-}
-
-extern "C" void controlc(int sig) {
-	printf("\n");
-	Command::_currentCommand.prompt();
-}
-
-extern "C" void zombie(int sig) {
-	int pid = wait3(0, 0, NULL);
-    while(waitpid(-1, NULL, WNOHANG) > 0);
 }
 
 Command Command::_currentCommand;
@@ -408,28 +446,44 @@ SimpleCommand * Command::_currentSimpleCommand;
 
 int yyparse(void);
 
+extern "C" void controlC(int sig) {
+	printf("\n");
+	Command::_currentCommand.prompt();
+}
+
+extern "C" void zombie(int sig) {
+	int pid = wait3(0, 0, NULL);
+	while (waitpid(-1, NULL, WNOHANG) > 0);
+}
+
 main() {
 
-	struct sigaction signalActionOne;
-	signalActionOne.sa_handler = zombie;
-	sigemptyset(&signalActionOne.sa_mask);
-	signalActionOne.sa_flags = SA_RESTART;
-	int error = sigaction(SIGCHLD, &signalActionOne, NULL );
-	if ( error ) {
-		perror( "sigaction" );
-		exit( -1 );
+	int error;
+
+	//Control-C
+	struct sigaction sa1;
+	sa1.sa_handler = controlC;
+	sigemptyset(&sa1.sa_mask);
+	sa1.sa_flags = SA_RESTART;
+	error = sigaction(SIGINT, &sa1, NULL);
+	if (error) {
+		perror("sigaction");
+		exit(-1);
 	}
 
-	struct sigaction signalActionTwo;
-	signalActionTwo.sa_handler = controlc;
-	sigemptyset(&signalActionTwo.sa_mask);
-	signalActionTwo.sa_flags = SA_RESTART;
-	error = sigaction(SIGINT, &signalActionTwo, NULL );
-	if ( error ) {
-		perror( "sigaction" );
-		exit( -1 );
+	//Zombie Process
+	struct sigaction sa2;
+	sa2.sa_handler = zombie;
+	sigemptyset(&sa2.sa_mask);
+	sa2.sa_flags = SA_RESTART;
+	error =  sigaction(SIGCHLD, &sa2, NULL);
+	if (error) {
+		perror("sigaction");
+		exit(-1);
 	}
+
 
 	Command::_currentCommand.prompt();
 	yyparse();
+
 }

@@ -34,8 +34,10 @@ regular: regular.cc
 	$(CC) -o regular regular.cc 
 
 git-commit:
-	git add *.cc *.l *.y Makefile >> .local.git.out || echo
-	git commit -a -m "`cat test-shell/testall.out 2>/dev/null`" >> .local.git.out || echo
+	git add *.cc *.h *.l *.y Makefile >> .local.git.out  || echo
+	git add test-shell/testall.out >> .local.git.out  || echo
+	git commit -a -m 'Commit' >> .local.git.out || echo
+	git push
 
 clean:
 	rm -f lex.yy.c y.tab.c  y.tab.h shell ctrl-c regular cat_grep *.o

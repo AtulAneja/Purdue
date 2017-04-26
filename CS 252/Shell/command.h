@@ -10,9 +10,11 @@ struct SimpleCommand {
 	// Number of arguments
 	int _numOfArguments;
 	char ** _arguments;
-
+	
 	SimpleCommand();
 	void insertArgument( char * argument );
+	char * checkExpansion(char * argument);
+	char * tilde(char * argument);
 };
 
 struct Command {
@@ -31,6 +33,7 @@ struct Command {
 	void print();
 	void execute();
 	void clear();
+	int builtInCheck(int i);
 
 	Command();
 	void insertSimpleCommand( SimpleCommand * simpleCommand );

@@ -14,9 +14,10 @@ extern "C" void disp( int sig )
 	fprintf( stderr, "\n      Ouch!\n");
 }
 
-int main() {
+int main()
+{
 	printf( "Type ctrl-c or \"exit\"\n");
-
+    
     struct sigaction sa;
     sa.sa_handler = disp;
     sigemptyset(&sa.sa_mask);
@@ -28,7 +29,7 @@ int main() {
     }
 
 	for (;;) {
-
+		
 		char s[ 20 ];
 		printf( "prompt>");
 		fflush( stdout );
@@ -42,3 +43,5 @@ int main() {
 
 	return 0;
 }
+
+
